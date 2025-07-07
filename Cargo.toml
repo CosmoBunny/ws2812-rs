@@ -1,0 +1,23 @@
+[package]
+name = "ws2812-rs"
+version = "0.1.0"
+edition = "2024"
+description = "Flexible #![no_std] Rust driver for WS2812B LEDs — supports delay traits, spinloops, manual timing, and custom color patterns."
+license = "MIT"
+repository = "https://github.com/CosmoBunny/ws2812-rs"
+keywords = [
+  "ws2812",
+  "rgb",
+  "no_pio_need",
+  "no-std",
+  "embedded-hal",
+]
+
+[dependencies]
+embedded-hal = "1.*"
+
+[features]
+default = ["spinloop_delay"]
+manual_delay = []
+spinloop_delay = []
+own_delay = []
