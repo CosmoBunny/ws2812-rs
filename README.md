@@ -3,6 +3,8 @@
 [![Crates.io](https://img.shields.io/crates/v/ws2812_rs.svg)](https://crates.io/crates/ws2812_rs)
 [![Docs.rs](https://docs.rs/ws2812_rs/badge.svg)](https://docs.rs/ws2812_rs)
 
+<img width="2048" height="1536" alt="image" src="https://github.com/user-attachments/assets/8bd78753-7b22-4ade-92c1-06de3d2b1af1" />
+
 A lightweight, platform-agnostic Rust driver for WS2812B RGB LEDs. Designed with embedded systems in mind, this crate provides configurable timing strategies for controlling LED strips. It supports traditional bit-banging over a single data line, as well as highly reliable hardware SPI waveform generation. Compatible with `#![no_std]`, it includes full support for synchronous (`embedded-hal`) and asynchronous (`embedded-hal-async` / `embassy-time`) environments.
 
 ## Features
