@@ -190,6 +190,37 @@ pub trait GlowColor: TransferTiming {
         self.led_low();
         delay.delay_ns(Self::reset())
     }
+
+    #[cfg(feature = "async")]
+    #[cfg(not(feature = "manual_delay"))]
+    fn send_color_w_embassy<const N: usize>(
+        &mut self,
+        color: [Color; N],
+    ) -> impl Future<Output = ()> {
+        async move {
+            for each_color in color {
+                for byte in each_color.0 {
+                    for bit in (0..8).rev() {
+                        if (byte & (1 << bit)) != 0 {
+                            // Logic 1
+                            self.led_high();
+                            embassy_time::Timer::after_nanos(Self::t1h() as u64).await;
+                            self.led_low();
+                            embassy_time::Timer::after_nanos(Self::t1l() as u64).await;
+                        } else {
+                            // Logic 0
+                            self.led_high();
+                            embassy_time::Timer::after_nanos(Self::t0h() as u64).await;
+                            self.led_low();
+                            embassy_time::Timer::after_nanos(Self::t0l() as u64).await;
+                        }
+                    }
+                }
+                self.led_low();
+                embassy_time::Timer::after_nanos(Self::reset() as u64).await;
+            }
+        }
+    }
 }
 
 #[derive(Default, Clone)]
