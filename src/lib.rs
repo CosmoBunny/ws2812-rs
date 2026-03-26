@@ -225,7 +225,7 @@ pub trait GlowColor: TransferTiming {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub struct Color(pub [u8; 3]);
 
 impl Color {
@@ -438,12 +438,9 @@ impl<SPI: SpiBus> TransferTiming for WS2812SPI<SPI> {
 }
 
 pub trait SendColorBySPI: TransferTiming {
-    fn write<E: embedded_hal::spi::ErrorType>(&mut self, data: &[u8]) -> Result<(), E>;
-    fn color_send_by_spi<E: embedded_hal::spi::ErrorType>(
-        &mut self,
-        color: Color,
-        freq: u32,
-    ) -> Result<(), E> {
+    type Error;
+    fn write(&mut self, data: &[u8]) -> Result<(), Self::Error>;
+    fn color_send_by_spi(&mut self, color: Color, freq: u32) -> Result<(), Self::Error> {
         if freq < 2_500_000 {
             return Ok(());
         }
@@ -487,11 +484,11 @@ pub trait SendColorBySPI: TransferTiming {
         self.write(&spi_payload[0..bytes_used])
     }
 
-    fn write_colors<const N: usize, E: embedded_hal::spi::ErrorType>(
+    fn write_colors(
         &mut self,
-        colors: [Color; N],
+        colors: impl IntoIterator<Item = Color>,
         freq: u32,
-    ) -> Result<(), E> {
+    ) -> Result<(), Self::Error> {
         for color in colors {
             self.color_send_by_spi(color, freq)?;
         }
@@ -511,11 +508,9 @@ pub trait SendColorBySPI: TransferTiming {
 }
 
 impl<SPI: SpiBus> SendColorBySPI for WS2812SPI<SPI> {
-    fn write<E>(&mut self, data: &[u8]) -> Result<(), E>
-    where
-        E: embedded_hal::spi::ErrorType,
-    {
-        self.led.write(data).ok();
-        Ok(())
+    type Error = SPI::Error;
+
+    fn write(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+        self.led.write(data)
     }
 }
