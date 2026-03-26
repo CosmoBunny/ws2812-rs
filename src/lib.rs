@@ -2,27 +2,31 @@
 
 use embedded_hal::digital::OutputPin;
 
+#[cfg(feature = "async")]
+use embedded_hal_async::digital::Wait;
+
 #[cfg(not(feature = "spinloop_delay"))]
 use embedded_hal::delay::DelayNs;
 
 #[cfg(feature = "own_delay")]
-pub struct WS2812<'a, LED: OutputPin, D: DelayNs> {
+pub struct WS2812<'a, LED, D> {
     led: LED,
     delay: &'a mut D,
 }
 
 #[cfg(feature = "manual_delay")]
-pub struct WS2812<LED: OutputPin> {
+pub struct WS2812<LED> {
     led: LED,
 }
+
 #[cfg(feature = "spinloop_delay")]
-pub struct WS2812<LED: OutputPin> {
+pub struct WS2812<LED> {
     led: LED,
     cpu_freq: u64,
 }
 
 #[cfg(feature = "own_delay")]
-impl<'a, LED: OutputPin, D: DelayNs> WS2812<'a, LED, D> {
+impl<'a, LED, D: DelayNs> WS2812<'a, LED, D> {
     pub fn new(led: LED, delay: &'a mut D) -> Self {
         Self { led, delay }
     }
@@ -32,7 +36,7 @@ impl<'a, LED: OutputPin, D: DelayNs> WS2812<'a, LED, D> {
 }
 
 #[cfg(feature = "manual_delay")]
-impl<LED: OutputPin> WS2812<LED> {
+impl<LED> WS2812<LED> {
     pub fn new(led: LED) -> Self {
         Self { led }
     }
@@ -40,8 +44,9 @@ impl<LED: OutputPin> WS2812<LED> {
         self.led
     }
 }
+
 #[cfg(feature = "spinloop_delay")]
-impl<LED: OutputPin> WS2812<LED> {
+impl<LED> WS2812<LED> {
     pub fn new(led: LED, cpu_freq: u64) -> Self {
         Self { led, cpu_freq }
     }
@@ -50,15 +55,88 @@ impl<LED: OutputPin> WS2812<LED> {
     }
 }
 
-pub trait GlowColor {
+pub trait TransferTiming {
     fn t0h() -> u32;
     fn t1h() -> u32;
     fn t0l() -> u32;
     fn t1l() -> u32;
     fn reset() -> u32;
+}
+
+pub trait AsyncGlowColor: TransferTiming {
+    #[cfg(not(feature = "manual_delay"))]
+    fn delay_ns(&mut self, ns: u32) -> impl core::future::Future<Output = ()>;
+
+    fn wait_for_low(&mut self) -> impl core::future::Future<Output = ()>;
+    fn wait_for_high(&mut self) -> impl core::future::Future<Output = ()>;
 
     #[cfg(not(feature = "manual_delay"))]
+    fn async_send_color<const N: usize>(
+        &mut self,
+        color: [Color; N],
+    ) -> impl core::future::Future<Output = ()> {
+        async move {
+            for each_color in color {
+                for byte in each_color.0 {
+                    for bit in (0..8).rev() {
+                        if (byte & (1 << bit)) != 0 {
+                            // Logic 1
+                            self.wait_for_high().await;
+                            self.delay_ns(Self::t1h()).await;
+                            self.wait_for_low().await;
+                            self.delay_ns(Self::t1l()).await;
+                        } else {
+                            // Logic 0
+                            self.wait_for_high().await;
+                            self.delay_ns(Self::t0h()).await;
+                            self.wait_for_low().await;
+                            self.delay_ns(Self::t0l()).await;
+                        }
+                    }
+                }
+            }
+            self.wait_for_low().await;
+
+            self.delay_ns(Self::reset()).await
+        }
+    }
+
+    #[cfg(feature = "manual_delay")]
+    fn async_send_color<const N: usize, D: DelayNs>(
+        &mut self,
+        color: [Color; N],
+        delay: &mut D,
+    ) -> impl core::future::Future<Output = ()> {
+        async move {
+            for each_color in color {
+                for byte in each_color.0 {
+                    for bit in (0..8).rev() {
+                        if (byte & (1 << bit)) != 0 {
+                            // Logic 1
+                            self.wait_for_high().await;
+                            delay.delay_ns(Self::t1h());
+                            self.wait_for_low().await;
+                            delay.delay_ns(Self::t1l());
+                        } else {
+                            // Logic 0
+                            self.wait_for_high().await;
+                            delay.delay_ns(Self::t0h());
+                            self.wait_for_low().await;
+                            delay.delay_ns(Self::t0l());
+                        }
+                    }
+                }
+            }
+            self.wait_for_low().await;
+            delay.delay_ns(Self::reset())
+        }
+    }
+}
+
+pub trait GlowColor: TransferTiming {
+    #[cfg(not(feature = "manual_delay"))]
     fn delay_ns(&mut self, ns: u32);
+
     fn led_low(&mut self);
     fn led_high(&mut self);
 
@@ -84,6 +162,7 @@ pub trait GlowColor {
             }
         }
         self.led_low();
+
         self.delay_ns(Self::reset())
     }
 
@@ -163,50 +242,72 @@ impl Color {
 }
 
 #[cfg(feature = "own_delay")]
-impl<'a, LED: OutputPin, D: DelayNs> GlowColor for WS2812<'a, LED, D> {
+impl<'a, LED, D> TransferTiming for WS2812<'a, LED, D> {
     fn t0h() -> u32 {
-        350 // Time in nanoseconds (logic 0 high)
+        350
     }
     fn t1h() -> u32 {
-        700 // Time in nanoseconds (logic 1 high)
+        700
     }
     fn t0l() -> u32 {
-        800 // Time in nanoseconds (logic 0 low)
+        800
     }
     fn t1l() -> u32 {
-        600 // Time in nanoseconds (logic 1 low)
+        600
     }
     fn reset() -> u32 {
         50
     }
-    fn delay_ns(&mut self, ns: u32) {
-        self.delay.delay_ns(ns);
-    }
+}
+
+#[cfg(feature = "own_delay")]
+impl<'a, LED: OutputPin, D: DelayNs> GlowColor for WS2812<'a, LED, D> {
     fn led_low(&mut self) {
         self.led.set_low().ok();
+    }
+    fn delay_ns(&mut self, ns: u32) {
+        self.delay.delay_ns(ns);
     }
     fn led_high(&mut self) {
         self.led.set_high().ok();
     }
 }
 
+#[cfg(feature = "async")]
+#[cfg(feature = "own_delay")]
+impl<'a, LED: Wait, D> AsyncGlowColor for WS2812<'a, LED, D> {
+    async fn wait_for_high(&mut self) {
+        self.led.wait_for_high().await.ok();
+    }
+    async fn delay_ns(&mut self, ns: u32) {
+        embassy_time::Timer::after_nanos(ns as u64).await
+    }
+    async fn wait_for_low(&mut self) {
+        self.led.wait_for_low().await.ok();
+    }
+}
+
 #[cfg(feature = "spinloop_delay")]
-impl<LED: OutputPin> GlowColor for WS2812<LED> {
+impl<'a, LED> TransferTiming for WS2812<LED> {
     fn t0h() -> u32 {
-        350 // Time in nanoseconds (logic 0 high)
+        350
     }
     fn t1h() -> u32 {
-        700 // Time in nanoseconds (logic 1 high)
+        700
     }
     fn t0l() -> u32 {
-        800 // Time in nanoseconds (logic 0 low)
+        800
     }
     fn t1l() -> u32 {
-        600 // Time in nanoseconds (logic 1 low)
+        600
     }
     fn reset() -> u32 {
         50
     }
+}
+
+#[cfg(feature = "spinloop_delay")]
+impl<LED: OutputPin> GlowColor for WS2812<LED> {
     fn led_low(&mut self) {
         self.led.set_low().ok();
     }
@@ -220,27 +321,57 @@ impl<LED: OutputPin> GlowColor for WS2812<LED> {
         self.led.set_high().ok();
     }
 }
+
+#[cfg(feature = "async")]
+#[cfg(feature = "spinloop_delay")]
+impl<LED: Wait> AsyncGlowColor for WS2812<LED> {
+    async fn wait_for_high(&mut self) {
+        self.led.wait_for_high().await.ok();
+    }
+    async fn delay_ns(&mut self, ns: u32) {
+        embassy_time::Timer::after_nanos(ns as u64).await
+    }
+    async fn wait_for_low(&mut self) {
+        self.led.wait_for_low().await.ok();
+    }
+}
+
 #[cfg(feature = "manual_delay")]
-impl<LED: OutputPin> GlowColor for WS2812<LED> {
+impl<'a, LED> TransferTiming for WS2812<LED> {
     fn t0h() -> u32 {
-        350 // Time in nanoseconds (logic 0 high)
+        350
     }
     fn t1h() -> u32 {
-        700 // Time in nanoseconds (logic 1 high)
+        700
     }
     fn t0l() -> u32 {
-        800 // Time in nanoseconds (logic 0 low)
+        800
     }
     fn t1l() -> u32 {
-        600 // Time in nanoseconds (logic 1 low)
+        600
     }
     fn reset() -> u32 {
         50
     }
+}
+
+#[cfg(feature = "manual_delay")]
+impl<LED: OutputPin> GlowColor for WS2812<LED> {
     fn led_low(&mut self) {
         self.led.set_low().ok();
     }
     fn led_high(&mut self) {
         self.led.set_high().ok();
+    }
+}
+
+#[cfg(feature = "async")]
+#[cfg(feature = "manual_delay")]
+impl<LED: Wait> AsyncGlowColor for WS2812<LED> {
+    async fn wait_for_high(&mut self) {
+        self.led.wait_for_high().await.ok();
+    }
+    async fn wait_for_low(&mut self) {
+        self.led.wait_for_low().await.ok();
     }
 }

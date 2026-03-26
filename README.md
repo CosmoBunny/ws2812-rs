@@ -2,7 +2,7 @@
 
 A lightweight, platform-agnostic Rust driver for WS2812B RGB LEDs. Designed with embedded systems in mind, this crate provides configurable timing strategies for controlling LED strips using only a data line. Compatible with `#![no_std]`.
 
-## ✨ Features
+## Features
 
 - WS2812B-compatible 1-wire RGB protocol
 - Multiple timing strategies:
@@ -13,7 +13,7 @@ A lightweight, platform-agnostic Rust driver for WS2812B RGB LEDs. Designed with
 - Flexible for boards without advanced peripherals
 - Compile-time control via Cargo features
 
-## 🛠 Configuration
+## Configuration
 
 Enable your desired timing backend by activating one of the following **features**:
 
@@ -22,10 +22,12 @@ Enable your desired timing backend by activating one of the following **features
 | `own_delay`                 | Use a mutable reference to a `DelayNs` trait impl |
 | `manual_delay`              | Provide delay at each call to `send_color`        |
 | `spinloop_delay`(default)   | Delay through CPU spin-loops with known frequency |
+| async                       | async pin operation with embassy_timer            | 
+
 
 > **Note:** Only one feature should be enabled at a time.
 
-## 📦 Usage
+## Usage
 
 ### `Cargo.toml`
 
