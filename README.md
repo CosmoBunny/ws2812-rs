@@ -34,7 +34,7 @@ Enable your desired timing backend by activating one of the following **features
 
 ```toml
 [dependencies]
-ws2812b = "*" # Replace with the actual version
+ws2812b_rs = "*" # Replace with the actual version
 embedded-hal = "1.0" 
 
 # Only required if using the `async` feature:
@@ -62,7 +62,7 @@ Available when the `async` feature is enabled. Use this in async contexts (e.g.,
 You can easily define custom colors using RGB values or use the built-in constant methods:
 
 ```rust
-use ws2812b::Color;
+use ws2812b_rs::Color;
 
 // Custom RGB
 let custom_color = Color([100, 50, 200]);
