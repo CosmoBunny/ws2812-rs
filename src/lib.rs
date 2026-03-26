@@ -2,6 +2,8 @@
 
 use embedded_hal::digital::OutputPin;
 
+use embedded_hal::spi::SpiBus;
+
 #[cfg(feature = "async")]
 use embedded_hal_async::digital::Wait;
 
@@ -14,7 +16,7 @@ pub struct WS2812<'a, LED, D> {
     delay: &'a mut D,
 }
 
-#[cfg(feature = "manual_delay")]
+#[cfg(feature = "manual")]
 pub struct WS2812<LED> {
     led: LED,
 }
@@ -35,7 +37,7 @@ impl<'a, LED, D: DelayNs> WS2812<'a, LED, D> {
     }
 }
 
-#[cfg(feature = "manual_delay")]
+#[cfg(feature = "manual")]
 impl<LED> WS2812<LED> {
     pub fn new(led: LED) -> Self {
         Self { led }
@@ -64,13 +66,13 @@ pub trait TransferTiming {
 }
 
 pub trait AsyncGlowColor: TransferTiming {
-    #[cfg(not(feature = "manual_delay"))]
+    #[cfg(not(feature = "manual"))]
     fn delay_ns(&mut self, ns: u32) -> impl core::future::Future<Output = ()>;
 
     fn wait_for_low(&mut self) -> impl core::future::Future<Output = ()>;
     fn wait_for_high(&mut self) -> impl core::future::Future<Output = ()>;
 
-    #[cfg(not(feature = "manual_delay"))]
+    #[cfg(not(feature = "manual"))]
     fn async_send_color<const N: usize>(
         &mut self,
         color: [Color; N],
@@ -101,7 +103,7 @@ pub trait AsyncGlowColor: TransferTiming {
         }
     }
 
-    #[cfg(feature = "manual_delay")]
+    #[cfg(feature = "manual")]
     fn async_send_color<const N: usize, D: DelayNs>(
         &mut self,
         color: [Color; N],
@@ -134,13 +136,13 @@ pub trait AsyncGlowColor: TransferTiming {
 }
 
 pub trait GlowColor: TransferTiming {
-    #[cfg(not(feature = "manual_delay"))]
+    #[cfg(not(feature = "manual"))]
     fn delay_ns(&mut self, ns: u32);
 
     fn led_low(&mut self);
     fn led_high(&mut self);
 
-    #[cfg(not(feature = "manual_delay"))]
+    #[cfg(not(feature = "manual"))]
     fn send_color<const N: usize>(&mut self, color: [Color; N]) {
         for each_color in color {
             for byte in each_color.0 {
@@ -166,7 +168,7 @@ pub trait GlowColor: TransferTiming {
         self.delay_ns(Self::reset())
     }
 
-    #[cfg(feature = "manual_delay")]
+    #[cfg(feature = "manual")]
     fn send_color<const N: usize, D: DelayNs>(&mut self, color: [Color; N], delay: &mut D) {
         for each_color in color {
             for byte in each_color.0 {
@@ -192,7 +194,7 @@ pub trait GlowColor: TransferTiming {
     }
 
     #[cfg(feature = "async")]
-    #[cfg(not(feature = "manual_delay"))]
+    #[cfg(not(feature = "manual"))]
     fn send_color_w_embassy<const N: usize>(
         &mut self,
         color: [Color; N],
@@ -275,19 +277,19 @@ impl Color {
 #[cfg(feature = "own_delay")]
 impl<'a, LED, D> TransferTiming for WS2812<'a, LED, D> {
     fn t0h() -> u32 {
-        350
+        400
     }
     fn t1h() -> u32 {
-        700
-    }
-    fn t0l() -> u32 {
         800
     }
+    fn t0l() -> u32 {
+        850
+    }
     fn t1l() -> u32 {
-        600
+        450
     }
     fn reset() -> u32 {
-        50
+        50_000
     }
 }
 
@@ -319,21 +321,21 @@ impl<'a, LED: Wait, D> AsyncGlowColor for WS2812<'a, LED, D> {
 }
 
 #[cfg(feature = "spinloop_delay")]
-impl<'a, LED> TransferTiming for WS2812<LED> {
+impl<LED> TransferTiming for WS2812<LED> {
     fn t0h() -> u32 {
-        350
+        400
     }
     fn t1h() -> u32 {
-        700
-    }
-    fn t0l() -> u32 {
         800
     }
+    fn t0l() -> u32 {
+        850
+    }
     fn t1l() -> u32 {
-        600
+        450
     }
     fn reset() -> u32 {
-        50
+        50_000
     }
 }
 
@@ -367,26 +369,26 @@ impl<LED: Wait> AsyncGlowColor for WS2812<LED> {
     }
 }
 
-#[cfg(feature = "manual_delay")]
+#[cfg(feature = "manual")]
 impl<'a, LED> TransferTiming for WS2812<LED> {
     fn t0h() -> u32 {
-        350
+        400
     }
     fn t1h() -> u32 {
-        700
-    }
-    fn t0l() -> u32 {
         800
     }
+    fn t0l() -> u32 {
+        850
+    }
     fn t1l() -> u32 {
-        600
+        450
     }
     fn reset() -> u32 {
-        50
+        50_000
     }
 }
 
-#[cfg(feature = "manual_delay")]
+#[cfg(feature = "manual")]
 impl<LED: OutputPin> GlowColor for WS2812<LED> {
     fn led_low(&mut self) {
         self.led.set_low().ok();
@@ -397,12 +399,117 @@ impl<LED: OutputPin> GlowColor for WS2812<LED> {
 }
 
 #[cfg(feature = "async")]
-#[cfg(feature = "manual_delay")]
+#[cfg(feature = "manual")]
 impl<LED: Wait> AsyncGlowColor for WS2812<LED> {
     async fn wait_for_high(&mut self) {
         self.led.wait_for_high().await.ok();
     }
     async fn wait_for_low(&mut self) {
         self.led.wait_for_low().await.ok();
+    }
+}
+
+pub struct WS2812SPI<SPI: SpiBus> {
+    led: SPI,
+}
+
+impl<SPI: SpiBus> TransferTiming for WS2812SPI<SPI> {
+    fn t0h() -> u32 {
+        400
+    }
+    fn t1h() -> u32 {
+        800
+    }
+    fn t0l() -> u32 {
+        850
+    }
+    fn t1l() -> u32 {
+        450
+    }
+    fn reset() -> u32 {
+        50_000
+    }
+}
+
+pub trait SendColorBySPI: TransferTiming {
+    fn write<E: embedded_hal::spi::ErrorType>(&mut self, data: &[u8]) -> Result<(), E>;
+    fn color_send_by_spi<E: embedded_hal::spi::ErrorType>(
+        &mut self,
+        color: Color,
+        freq: u32,
+    ) -> Result<(), E> {
+        if freq < 2_500_000 {
+            return Ok(());
+        }
+
+        let ns_per_bit = 1_000_000_000 / freq;
+
+        let t0h_bits = (Self::t0h() + (ns_per_bit / 2)) / ns_per_bit;
+        let t0l_bits = (Self::t0l() + (ns_per_bit / 2)) / ns_per_bit;
+
+        let t1h_bits = (Self::t1h() + (ns_per_bit / 2)) / ns_per_bit;
+        let t1l_bits = (Self::t1l() + (ns_per_bit / 2)) / ns_per_bit;
+
+        let mut spi_payload = [0u8; 24];
+        let mut bit_pos = 0;
+
+        let grb = [color.0[1], color.0[0], color.0[2]];
+
+        for color_byte in grb {
+            for bit_pair in (0..8).rev() {
+                let bit = (color_byte >> bit_pair) & 1;
+
+                let (high_bits, low_bits) = if bit == 1 {
+                    (t1h_bits, t1l_bits)
+                } else {
+                    (t0h_bits, t0l_bits)
+                };
+
+                for _ in 0..high_bits {
+                    let byte_idx = bit_pos / 8;
+                    let bit_idx = 7 - (bit_pos % 8);
+                    spi_payload[byte_idx as usize] |= 1 << bit_idx;
+                    bit_pos += 1;
+                }
+
+                bit_pos += low_bits;
+            }
+        }
+
+        let bytes_used = ((bit_pos + 7) / 8) as usize;
+
+        self.write(&spi_payload[0..bytes_used])
+    }
+
+    fn write_colors<const N: usize, E: embedded_hal::spi::ErrorType>(
+        &mut self,
+        colors: [Color; N],
+        freq: u32,
+    ) -> Result<(), E> {
+        for color in colors {
+            self.color_send_by_spi(color, freq)?;
+        }
+
+        let reset_ns = Self::reset();
+        let ns_per_bit = 1_000_000_000 / freq;
+        let reset_bits = reset_ns / ns_per_bit;
+        let reset_bytes = ((reset_bits + 7) / 8) as usize;
+
+        let reset_payload = [0u8; 64];
+        let clamped_bytes = reset_bytes.min(64);
+
+        self.write(&reset_payload[0..clamped_bytes])?;
+
+        Ok(())
+    }
+}
+
+impl<SPI: SpiBus> SendColorBySPI for WS2812SPI<SPI> {
+    fn write<E>(&mut self, data: &[u8]) -> Result<(), E>
+    where
+        E: embedded_hal::spi::ErrorType,
+    {
+        self.led.write(data).ok();
+        Ok(())
     }
 }
