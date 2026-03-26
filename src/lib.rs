@@ -413,6 +413,12 @@ pub struct WS2812SPI<SPI: SpiBus> {
     led: SPI,
 }
 
+impl<SPI: SpiBus> WS2812SPI<SPI> {
+    pub fn new(led: SPI) -> Self {
+        Self { led }
+    }
+}
+
 impl<SPI: SpiBus> TransferTiming for WS2812SPI<SPI> {
     fn t0h() -> u32 {
         400
